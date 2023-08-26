@@ -1,4 +1,4 @@
-# lib/aiko/led.py: version: 2023-08-01 00:00 v06
+# lib/aiko/led.py: version: 2023-07-30 04:00 v06
 #
 # Usage
 # ~~~~~
@@ -15,6 +15,7 @@
 #              (led:pixel R G B X)
 #              (led:write)
 #              (led:write R G B ...)
+#              (led:random_lines_demo Duration X0 Y0 X1 Y1)
 #
 # Topic: /in   (led:traits)
 #        /out  (led:traits rgb LED_COUNT)
@@ -36,8 +37,11 @@ from neopixel import NeoPixel
 import configuration.led
 
 import urandom
+import random
+import time
+
 apa106   = False
-dim      = 0.2  # 100% = 1.0
+dim      = 0.5  # 100% = 1.0
 full     = 255
 length   = None
 length_x = None
@@ -50,20 +54,16 @@ colors = {
   "red":    (full,    0,    0),
   "green":  (   0, full,    0),
   "blue":   (   0,    0, full),
-  "yellow": (full, full,    0),
   "purple": (full,    0, full),
-  "aqua":   (   0, full, full),
+  "yellow": (full, full,    0),
   "white":  (full, full, full)
 }
 
-aqua = colors["aqua"]
 black = colors["black"]
 red = colors["red"]
 green = colors["green"]
 blue = colors["blue"]
-purple = colors["purple"]
 yellow = colors["yellow"]
-white = colors["white"]
 
 def apply_dim(color, dimmer=None):
   global dim
@@ -77,6 +77,7 @@ def apply_dim(color, dimmer=None):
 
 def fill(color):
   np.fill(apply_dim((color[0], color[1], color[2])))
+  np.write()
 
 # Bresenham's line algorithm
 def line(color, x0, y0, x1, y1):
@@ -100,6 +101,7 @@ def line(color, x0, y0, x1, y1):
       x0 += x_increment
 
 def linear(dimension):
+  print("inside linear: ", dimension)
   if type(dimension) == int: return dimension
   result = 1
   for index in range(len(dimension)): result *= dimension[index]
@@ -120,13 +122,13 @@ def pixel(color, x=0, write=False, lock=None):
   if zigzag and (x // length_x) % 2:
     x = length_x * (x // length_x + 1) - (x - length_x * (x // length_x)) - 1
   if x >= lock and x < length: np[x] = apply_dim(color)
-  if write: np.write()
+  if write==True: np.write()
 
 def pixel0(color):
   np[0] = color
   saved_buffer = np.buf
   np.buf = bytearray(3)
-  np[0] = apply_dim(color)
+  np[0] = color
   np.write()
   np.buf = saved_buffer
 
@@ -141,17 +143,49 @@ def random_pixel(write=False):
 def pixel_xy(color, x=0, y=0, write=False):
   pixel(color, x + y * length_x, write)
 
+def dim_grid():
+  for i in range(0,len(np)):
+    colour=apply_dim(np[i])
+    pixel(colour,i,write=True)
+
+def random_lines(duration, x_origin, y_origin, x_size, y_size):
+  global dim
+  dim=0.75
+  dim_pls=True
+  start_time = time.time()
+  end_time = start_time + duration
+  while time.time() < end_time:
+    if dim_pls==True: dim_grid()
+    r=random.randint(0,50)
+    g=random.randint(0,50)
+    b=random.randint(0,50)
+    x0=random.randint(x_origin,x_origin+x_size)
+#     x0=random.randint(0,2)
+    y0=random.randint(y_origin,y_origin+y_size)
+#     y0=random.randint(0,2)
+    x1=random.randint(x_origin,x_origin+x_size)
+#     x1=random.randint(0,2)
+    y1=random.randint(y_origin,y_origin+y_size)
+#     y1=random.randint(0,2)
+    line((r, g, b), x0, y0, x1, y1)
+    time.sleep(0.1)
+    np.write()
+   
+
 def initialise(settings=configuration.led.settings):
-  global apa106, length, length_x, np, zigzag
+  global apa106, length, length_x, length_y, np, zigzag
 
   parameter = configuration.main.parameter
   apa106 = parameter("apa106", settings)
   zigzag = parameter("zigzag", settings)
-
-  length = linear(settings["dimension"])
-  length_x = settings["dimension"][0]
+  
+#   dimension=settings["dimension"] #this doesn't work because 'dimension' is set in length and the function linear. Very confusing.
+  
+  length = linear(settings["dimension"]) #the length function fills the whole grid of length width*height pixels, so in the case of say 4x3 specified pixels, a strip of 12*3 LEDs will not have a subsection of 4*3 leds filled, it will have its first 12 LEDs filled. Code wasn't written the way I thought.
+  length_x = settings["dimension"][0] #using these global variables should hopefull generalize the line function
+  length_y = settings["dimension"][1]
   np = NeoPixel(Pin(settings["neopixel_pin"]), length)  # timing=True
-
+  
   import aiko.mqtt
   aiko.mqtt.add_message_handler(on_led_message, "$me/in")
 
@@ -165,23 +199,29 @@ def on_led_message(topic, payload_in):
     global dim
     tokens = [float(token) for token in payload_in[9:-1].split()]
     dim = tokens[0]
+    apply_dim(dim)
+    np.write()
     return True
 
   if payload_in.startswith("(led:fill "):
     tokens = [int(token) for token in payload_in[10:-1].split()]
     color = (tokens[0], tokens[1], tokens[2])
+    print("fill colour:", tokens[0], tokens[1], tokens[2])
     fill(color)
+    np.write()
     return True
 
   if payload_in.startswith("(led:line "):
     tokens = [int(token) for token in payload_in[10:-1].split()]
     color = (tokens[0], tokens[1], tokens[2])
     line(color, tokens[3], tokens[4], tokens[5], tokens[6])
+    np.write()
     return True
 
   if payload_in.startswith("(led:pixel "):
     tokens = [int(token) for token in payload_in[11:-1].split()]
     pixel((tokens[0], tokens[1], tokens[2]), tokens[3])
+    np.write()
     return True
 
   if payload_in.startswith("(led:write"):
@@ -194,6 +234,14 @@ def on_led_message(topic, payload_in):
     np.write()
     return True
 
+  if payload_in.startswith("(led:random_lines_demo"):
+    tokens = [int(token) for token in payload_in[23:-1].split()]
+    print("duration entered:", tokens[0], "seconds")
+    duration = tokens[0]
+    random_lines(duration,x_origin=tokens[1], y_origin=tokens[2], x_size=tokens[3], y_size=tokens[4])
+    return True
+
+
 # if payload_in == "(led:traits)":
 #   payload_out  = "(traits rgb " + str(LED_COUNT) + ")"
 #   import aiko.mqtt
@@ -201,3 +249,4 @@ def on_led_message(topic, payload_in):
 #   return True
 
   return False
+

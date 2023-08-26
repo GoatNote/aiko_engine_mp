@@ -76,10 +76,12 @@ is currently supported on the
 - Plug in your ESP32 device and make sure you can see it,
   e.g `ls -l /dev/tty.*` will show a serial device file like `/dev/ttyUSB0`
   or `/dev/tty.wchserial1410`
+  On Windows: python -m serial.tools.list_ports
 
 - Export the serial port to an environment variable, so `mpfshell` can use it,
   e.g `export AMPY_PORT=<device_file>` where `device_file` is the device file
   shown by the `ls -l` command above
+  e.g 'MPFshell open COM15' (this is a setup step, after which you use ESPtool to flash the program)
 
 - Download latest [microPython](http://micropython.org/download)
 
@@ -93,7 +95,9 @@ is currently supported on the
 
 - Run the Aiko Engine MP flash script, which loads this firmware onto the device
 ```
-    ./scripts/mpf_script.sh ./scripts/aiko.mpf
+    Windows: esptool.py --port COM15 --baud 115200 write_flash 0 .\program.sh
+    (use backslashes for windows, sigh, add the whole directory if your python instance is in a different place.
+	./scripts/mpf_script.sh ./scripts/aiko.mpf
 ```
 
 - For microPython development, the [Thonny IDE](https://thonny.org)

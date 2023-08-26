@@ -12,5 +12,6 @@ settings = {    # LED panel or string
 # "neopixel_pin": 15,     # Wemos OLED
 # "neopixel_pin": 23,     # IoTuz
 # "neopixel_pin": 48,     # Banana Pi Leaf S3
+  #Zigzag=move from left to right, right to left. For a "cartesian plotting plane", leave False
   "zigzag":       False   # For 2D panels
 }
